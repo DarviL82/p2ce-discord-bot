@@ -1,6 +1,6 @@
 {
 	"name": "p2ce-discord-bot",
-	"version": "2.1.2",
+	"version": "2.2.2",
 	"engines": {
 		"node": ">=16.0.0"
 	},
@@ -9,6 +9,7 @@
 	"scripts": {
 		"start": "node build/main.js",
 		"update-commands": "node build/main.js --update-commands",
+		"stop": "node build/main.js --stop",
 		"build": "tsc -p .",
 		"clean": "rm -rf build",
 		"lint": "eslint src --ext .ts --fix",
@@ -26,24 +27,24 @@
 		"url": "git+https://github.com/ChaosInitiative/p2ce-discord-bot.git"
 	},
 	"dependencies": {
-		"@discordjs/rest": "^1.3.0",
-		"canvas": "^2.10.1",
-		"console-stamp": "^3.0.6",
+		"adm-zip": "^0.5.10",
+		"canvas": "^2.10.2",
+		"console-stamp": "^3.1.1",
 		"discord.js": "^14.2.0",
 		"google-spreadsheet": "^3.3.0",
 		"moment": "^2.29.4",
 		"node-fetch": "^2.6.7",
-		"octokit": "^2.0.7",
+		"octokit": "^2.0.14",
 		"owoify-js": "^2.0.0"
 	},
 	"devDependencies": {
-		"@types/node": "^18.8.0",
+		"@types/adm-zip": "^0.5.0",
+		"@types/node": "^18.11.18",
 		"@types/node-fetch": "^2.5.7",
-		"@typescript-eslint/eslint-plugin": "^5.40.1",
-		"@typescript-eslint/parser": "^5.40.1",
-		"discord-api-types": "^0.37.14",
-		"eslint": "^8.26.0",
-		"tsc-watch": "^5.0.3",
-		"typescript": "^4.8.3"
+		"@typescript-eslint/eslint-plugin": "^5.50.0",
+		"@typescript-eslint/parser": "^5.51.0",
+		"eslint": "^8.34.0",
+		"tsc-watch": "^6.0.0",
+		"typescript": "^4.9.5"
 	}
 }

@@ -1,7 +1,7 @@
 // noinspection JSIgnoredPromiseFromCall
 
 import fs from 'fs';
-import { ActivityType, Collection, GuildMember, IntentsBitField, Partials } from 'discord.js';
+import { ActivityType, Collection, GuildMember, IntentsBitField, MessageReaction, Partials, User } from 'discord.js';
 import { Callbacks, MoralityCoreClient } from './types/client';
 import { Command, ContextMenu } from './types/interaction';
 import { hasPermissionLevel, PermissionLevel } from './utils/permissions';
@@ -10,6 +10,8 @@ import { updateCommands, updateCommandsForGuild } from './utils/update_commands'
 import * as config from './config.json';
 import * as log from './utils/log';
 import * as persist from './utils/persist';
+import * as pluralkit from './utils/pluralkit';
+//import * as ipc from './utils/ipc';
 
 // Make console output better
 import consoleStamp from 'console-stamp';
@@ -194,8 +196,8 @@ async function main() {
 		}
 	});
 
-	// Listen for added reactions
-	client.on('messageReactionAdd', async (reaction, user) => {
+	// Helper since this code is basically the same
+	const messageReactionUpdate = async (reaction: MessageReaction, user: User, add: boolean) => {
 		// If we are reacting, or this is not a guild, bail
 		if (user.id === config.client_id || !reaction.message.guild) return;
 
@@ -219,39 +221,23 @@ async function main() {
 				}
 				return name === reaction.emoji.name;
 			}).forEach(roles => {
-				reaction.message.guild?.members.cache.get(user.id)?.roles.add(roles.role);
+				if (add) {
+					reaction.message.guild?.members.cache.get(user.id)?.roles.add(roles.role);
+				} else {
+					reaction.message.guild?.members.cache.get(user.id)?.roles.remove(roles.role);
+				}
 			});
 		}
+	};
+
+	// Listen for added reactions
+	client.on('messageReactionAdd', async (reaction, user) => {
+		await messageReactionUpdate(await reaction.fetch(), await user.fetch(), true);
 	});
 
 	// Listen for removed reactions
 	client.on('messageReactionRemove', async (reaction, user) => {
-		// If we are reacting, or this is not a guild, bail
-		if (user.id === config.client_id || !reaction.message.guild) return;
-
-		// When a reaction is received, check if the structure is partial
-		if (reaction.partial) {
-			// If the message this reaction belongs to was removed, the fetching might result in an API error
-			try {
-				await reaction.fetch();
-			} catch (err) {
-				log.writeToLog(undefined, (err as Error).toString());
-			}
-		}
-
-		// If persistent storage has the reaction message ID, remove requested role from the user
-		const data = persist.data(reaction.message.guild.id);
-		if (Object.hasOwn(data.reaction_roles, reaction.message.id)) {
-			data.reaction_roles[reaction.message.id].roles.filter(e => {
-				let name = e.emoji_name;
-				if (name.startsWith('<:') && name.endsWith('>')) {
-					name = name.substring(name.indexOf(':') + 1, name.lastIndexOf(':'));
-				}
-				return name === reaction.emoji.name;
-			}).forEach(roles => {
-				reaction.message.guild?.members.cache.get(user.id)?.roles.remove(roles.role);
-			});
-		}
+		await messageReactionUpdate(await reaction.fetch(), await user.fetch(), false);
 	});
 
 	// Listen for thread changes
@@ -295,14 +281,11 @@ async function main() {
 		}
 	});
 
-	// Listen for deleted messages
-	client.on('messageDelete', async message => {
-		// Only responds to members
-		if (message.member && !hasPermissionLevel(message.member, PermissionLevel.TEAM_MEMBER) && message.cleanContent && message.guild) {
-			const data = persist.data(message.guild.id);
-			if (data.config.log.options.message_deletes && message.author && !data.config.log.user_exceptions.includes(message.author.id)) {
-				log.messageDeleted(client, message.guild.id, message);
-			}
+	// Listen for created messages
+	client.on('messageCreate', async message => {
+		if (message.content.startsWith('pk;a')) {
+			// might be a system enabling autoproxy, remove from normal user cache if they were in it
+			pluralkit.purgeCacheEntry(message.author.id);
 		}
 	});
 
@@ -310,9 +293,18 @@ async function main() {
 	client.on('messageUpdate', async (oldMessage, newMessage) => {
 		// Only responds to members
 		if (newMessage.member && !hasPermissionLevel(newMessage.member, PermissionLevel.TEAM_MEMBER) && newMessage.guild) {
-			const data = persist.data(newMessage.guild.id);
-			if (data.config.log.options.message_edits && newMessage.author && !data.config.log.user_exceptions.includes(newMessage.author.id)) {
+			if (persist.data(newMessage.guild.id).config.log.options.message_edits && await pluralkit.shouldLog(newMessage)) {
 				log.messageUpdated(client, newMessage.guild.id, oldMessage, newMessage);
+			}
+		}
+	});
+
+	// Listen for deleted messages
+	client.on('messageDelete', async message => {
+		// Only responds to members
+		if (message.member && !hasPermissionLevel(message.member, PermissionLevel.TEAM_MEMBER) && message.cleanContent && message.guild) {
+			if (persist.data(message.guild.id).config.log.options.message_deletes && await pluralkit.shouldLog(message)) {
+				log.messageDeleted(client, message.guild.id, message);
 			}
 		}
 	});
@@ -347,17 +339,25 @@ async function main() {
 	// Log in
 	await client.login(config.token);
 
-	process.on('SIGINT', () => {
+	function shutdown() {
 		const date = new Date();
 		log.writeToLog(undefined, `--- BOT END AT ${date.toDateString()} ${date.getHours()}:${date.getMinutes()}:${date.getSeconds()} ---`);
 		client.destroy();
 		persist.saveAll();
 		process.exit();
-	});
+	}
+
+	process.on('SIGINT', shutdown);
+	//ipc.on('stop', shutdown);
+
+	//await ipc.listen();
 }
 
 if (process.argv.includes('--update-commands')) {
 	updateCommands();
+} else if (process.argv.includes('--stop')) {
+	log.writeToLog(undefined, '--stop called but it is unimplemented!');
+	//ipc.send('stop');
 } else {
 	main();
 }
